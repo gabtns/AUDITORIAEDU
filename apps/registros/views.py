@@ -21,6 +21,8 @@ from .models import RegistroMovimiento
 TZ = ZoneInfo('America/Argentina/Buenos_Aires')
 SECTOR_PROD = 'Produccion'
 SECTORES_G1G3 = ['G1-LOGISTICA', 'G3-SEMI ELABORADOS']
+TIPO_ENVIO = 'envio'
+TIPO_RECIBO = 'recibo'
 
 MESES_ES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -85,13 +87,21 @@ def dashboard(request):
     if codigo:
         base = base.filter(codigo=codigo)
 
-    # Producción: sector_salida (col E)
-    prod_qs = base.filter(sector_salida=SECTOR_PROD).order_by('-creado_en_origen')
+    # Producción: solo ENVÍOS que salen de Producción (tipo='envio' + sector_salida='Produccion')
+    # Excluye los recibos de G3/G1 donde sector_salida='Produccion' (esos son confirmaciones externas)
+    prod_qs = base.filter(
+        tipo__iexact=TIPO_ENVIO,
+        sector_salida=SECTOR_PROD,
+    ).order_by('-creado_en_origen')
     prod_rows = list(prod_qs)
     prod_sum = prod_qs.aggregate(s=Sum('cantidad_total'))['s'] or 0
 
-    # G1 / G3: sector_entrada (col F)
-    g1g3_qs = base.filter(sector_entrada__in=SECTORES_G1G3).order_by('-creado_en_origen')
+    # G1 / G3: solo RECIBOS que entran a G1 o G3 (tipo='recibo' + sector_entrada in G1/G3)
+    # Excluye los envíos de Producción que tienen sector_entrada='G3-SEMI ELABORADOS'
+    g1g3_qs = base.filter(
+        tipo__iexact=TIPO_RECIBO,
+        sector_entrada__in=SECTORES_G1G3,
+    ).order_by('-creado_en_origen')
     g1g3_rows = list(g1g3_qs)
     g1g3_sum = g1g3_qs.aggregate(s=Sum('cantidad_total'))['s'] or 0
 

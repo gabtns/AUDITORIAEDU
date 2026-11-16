@@ -1,0 +1,55 @@
+# ====== Configuración declarativa de Render ======
+# Al hacer "New + → Blueprint" en Render y apuntar a este repo, lee este
+# archivo y crea el web service con las variables declaradas abajo.
+# Las variables marcadas sync:false se completan en el dashboard
+# (son secretos: password de Supabase, SECRET_KEY, etc.).
+
+services:
+  - type: web
+    name: auditoria-edu
+    runtime: python
+    plan: free
+    region: oregon            # el único free disponible por default
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 60"
+    healthCheckPath: /login/
+
+    envVars:
+      # Generada automáticamente por Render al primer deploy
+      - key: SECRET_KEY
+        generateValue: true
+
+      - key: DEBUG
+        value: "False"
+
+      # El propio servicio pone su dominio en RENDER_EXTERNAL_HOSTNAME;
+      # settings.py lo lee y lo suma a ALLOWED_HOSTS.
+      - key: ALLOWED_HOSTS
+        value: ""
+
+      # Supabase — los secretos se cargan en el dashboard (sync:false)
+      - key: DB_NAME
+        value: postgres
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_HOST
+        value: db.srawajdbyfipekprtmvb.supabase.co
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_SSLMODE
+        value: require
+
+      # Credenciales iniciales (se usan sólo una vez con seed_users)
+      - key: SEED_USER_1
+        value: Auditoria2027
+      - key: SEED_PASS_1
+        sync: false
+      - key: SEED_USER_2
+        value: LucasCastro
+      - key: SEED_PASS_2
+        sync: false
+
+      - key: PYTHON_VERSION
+        value: "3.12.4"

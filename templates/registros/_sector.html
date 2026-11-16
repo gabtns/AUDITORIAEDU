@@ -1,0 +1,58 @@
+{% load humanize %}
+<div class="sector-block">
+  <div class="sector-head">
+    <div class="sector-head-left">
+      <div class="sector-icon">{{ icon }}</div>
+      <div class="sector-name">{{ nombre }}</div>
+    </div>
+    <div class="sector-count">{{ rows|length }} registros</div>
+  </div>
+  <div class="table-wrap">
+    <table class="records">
+      <thead>
+        <tr>
+          <th>A · Fecha</th>
+          <th>C · Usuario</th>
+          <th>D · Tipo</th>
+          <th>E · Salida</th>
+          <th>F · Entrada</th>
+          <th>G · Código</th>
+          <th>H · Descripción</th>
+          <th class="num">I · Bultos</th>
+          <th class="num">J · U/B</th>
+          <th class="num">K · Sueltas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.creado_en_origen|date:"d/m H:i" }}</td>
+            <td>{{ r.nombre_carga|default:"—" }}</td>
+            <td>
+              {% if r.tipo == 'envio' %}<span class="pill pill-env">Envío</span>
+              {% else %}<span class="pill pill-rec">Recibo</span>{% endif %}
+            </td>
+            <td><span class="sector-chip">{{ r.sector_salida }}</span></td>
+            <td><span class="sector-chip">{{ r.sector_entrada|default:"—" }}</span></td>
+            <td class="code">{{ r.codigo }}</td>
+            <td class="desc">{{ r.descripcion|default:"—" }}</td>
+            <td class="num">{{ r.cantidad_bultos|intcomma }}</td>
+            <td class="num">{{ r.unidades_por_bulto|intcomma }}</td>
+            <td class="num">{{ r.unidades_sueltas|intcomma }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="10" style="text-align:center; color:var(--muted); padding:40px;">
+            No hay registros en este rango.
+          </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="sector-foot">
+    <div>
+      <div class="sum-label">Σ Total unidades · {{ nombre|lower|capfirst }}</div>
+      <div class="sum-formula">Σ ( I × J + K )</div>
+    </div>
+    <div class="sum-value"><span class="accent">{{ suma|intcomma }}</span></div>
+  </div>
+</div>

@@ -1,32 +1,80 @@
 {% extends 'base.html' %}
 {% load humanize %}
-{% block title %}Registros · Auditoría Edu{% endblock %}
+{% block title %}Conciliación · Auditoría Edu{% endblock %}
 {% block content %}
 <section id="dash">
+
   <div class="dash-head">
     <div class="dash-head-inner">
       <div class="dash-title-group">
-        <h1>Registros · {{ desde|date:"F Y"|capfirst }} → {{ hasta|date:"F Y"|capfirst }}</h1>
-        <p>Movimientos de más reciente a más antiguo · Sesión: <strong>{{ user.username }}</strong></p>
-      </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end;">
-        <form method="get" action="{% url 'dashboard' %}" id="toggleForm" style="margin:0;">
-          <label class="toggle-group" style="cursor:pointer;">
-            <span class="toggle-label">Expandir 1 mes</span>
-            <span class="toggle-sw {% if expandir %}on{% endif %}"></span>
-            <input type="checkbox" name="expandir" value="1"
-                   onchange="document.getElementById('toggleForm').submit();"
-                   {% if expandir %}checked{% endif %} style="display:none;">
-          </label>
-        </form>
-        <span class="toggle-hint">Suma el mes anterior adicional</span>
+        <h1>Conciliación</h1>
+        <p>Producción <span style="color:var(--muted)">vs</span> G1 / G3 · Sesión: <strong>{{ user.username }}</strong></p>
       </div>
     </div>
   </div>
 
+  <!-- Filtros -->
   <div class="dash-body">
-    {% include 'registros/_sector.html' with icon='🏭' nombre='PRODUCCIÓN' rows=prod_rows suma=prod_sum %}
-    {% include 'registros/_sector.html' with icon='📦' nombre='G3-SEMI ELABORADOS' rows=g3_rows suma=g3_sum %}
+    <form method="get" action="{% url 'dashboard' %}" class="filtros-bar">
+      <div class="filtro">
+        <label for="mes">Mes</label>
+        <select id="mes" name="mes" onchange="this.form.submit()">
+          {% for v, label in meses %}
+            <option value="{{ v }}" {% if v == mes_sel %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filtro">
+        <label for="codigo">Artículo (código)</label>
+        <input id="codigo" name="codigo" type="text" list="codigos-list"
+               value="{{ codigo_sel }}" placeholder="todos" autocomplete="off">
+        <datalist id="codigos-list">
+          {% for c in codigos %}<option value="{{ c }}">{% endfor %}
+        </datalist>
+      </div>
+      <div class="filtro filtro-btn">
+        <button type="submit" class="btn-filter">Aplicar</button>
+        {% if codigo_sel %}
+          <a href="?mes={{ mes_sel }}" class="btn-filter btn-filter-ghost">Limpiar</a>
+        {% endif %}
+      </div>
+    </form>
+
+    <!-- Resumen comparativo -->
+    <div class="resumen">
+      <div class="resumen-item">
+        <div class="resumen-label">🏭 PRODUCCIÓN (salida)</div>
+        <div class="resumen-value">{{ prod_sum|intcomma }}</div>
+        <div class="resumen-sub">{{ prod_rows|length }} registros</div>
+      </div>
+      <div class="resumen-vs">vs</div>
+      <div class="resumen-item">
+        <div class="resumen-label">📦 G1 / G3 (entrada)</div>
+        <div class="resumen-value">{{ g1g3_sum|intcomma }}</div>
+        <div class="resumen-sub">{{ g1g3_rows|length }} registros</div>
+      </div>
+      <div class="resumen-diff
+          {% if diferencia == 0 %}diff-ok
+          {% elif diferencia > 0 %}diff-warn
+          {% else %}diff-bad{% endif %}">
+        <div class="resumen-label">Diferencia</div>
+        <div class="resumen-value">
+          {% if diferencia > 0 %}+{% endif %}{{ diferencia|intcomma }}
+        </div>
+        <div class="resumen-sub">
+          {% if diferencia == 0 %}Cuadra
+          {% elif diferencia > 0 %}Salió más de lo que entró
+          {% else %}Entró más de lo que salió{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Dos columnas lado a lado -->
+    <div class="dos-columnas">
+      {% include 'registros/_sector.html' with icon='🏭' nombre='PRODUCCIÓN' rows=prod_rows suma=prod_sum %}
+      {% include 'registros/_sector.html' with icon='📦' nombre='G1 / G3' rows=g1g3_rows suma=g1g3_sum %}
+    </div>
   </div>
+
 </section>
 {% endblock %}

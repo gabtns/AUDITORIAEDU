@@ -1,12 +1,17 @@
 """
-Dashboard: muestra registros del mes actual y anterior (toggle para +1 mes),
-separados en Producción | G3-SEMI ELABORADOS, con sumatoria al pie.
+Dashboard de conciliación:
+- Filtros: mes/año (col A) y código de artículo (col G)
+- Dos columnas lado a lado:
+  * Producción (col E == 'Produccion')
+  * G1 / G3   (col F in {'G1-LOGISTICA', 'G3-SEMI ELABORADOS'})
+- Sumatoria al pie de cada lado + diferencia para saber si el artículo "está".
 """
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
+from django.db.models.functions import ExtractYear, ExtractMonth
 from django.shortcuts import render
 from django.utils import timezone
 
@@ -15,60 +20,92 @@ from .models import RegistroMovimiento
 
 TZ = ZoneInfo('America/Argentina/Buenos_Aires')
 SECTOR_PROD = 'Produccion'
-SECTOR_G3 = 'G3-SEMI ELABORADOS'
+SECTORES_G1G3 = ['G1-LOGISTICA', 'G3-SEMI ELABORADOS']
+
+MESES_ES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 
-def _inicio_de_mes(ref: datetime) -> datetime:
-    return ref.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-
-def _mes_anterior(ref: datetime) -> datetime:
-    return _inicio_de_mes(_inicio_de_mes(ref) - timedelta(days=1))
-
-
-def _rango_meses(expandir: bool) -> tuple[datetime, datetime]:
-    """
-    (desde, hasta) según el toggle.
-    - expandir=False → mes actual + mes anterior (2 meses)
-    - expandir=True  → mes actual + 2 meses anteriores (3 meses)
-    """
-    ahora = timezone.now().astimezone(TZ)
-    actual = _inicio_de_mes(ahora)
-    anterior = _mes_anterior(actual)
-    desde = _mes_anterior(anterior) if expandir else anterior
-    hasta = _inicio_de_mes(actual + timedelta(days=32))
-    return desde, hasta
-
-
-def _consultar(sector: str, desde: datetime, hasta: datetime):
-    """
-    Trae los registros de un sector en el rango, ordenados descendente.
-    Usa CANTIDAD TOTAL como total_unidades (ya viene calculada en la hoja/BD).
-    """
+def _meses_disponibles():
+    """Lista de (valor_'YYYY-MM', label_'Octubre 2026') con datos en BD."""
     qs = (RegistroMovimiento.objects
-          .filter(sector_salida=sector,
-                  creado_en_origen__gte=desde,
-                  creado_en_origen__lt=hasta)
-          .order_by('-creado_en_origen'))
-    sumatoria = qs.aggregate(s=Sum('cantidad_total'))['s'] or 0
-    return list(qs), sumatoria
+          .annotate(y=ExtractYear('creado_en_origen'),
+                    m=ExtractMonth('creado_en_origen'))
+          .values('y', 'm').distinct().order_by('-y', '-m'))
+    salida = []
+    for row in qs:
+        y, m = row['y'], row['m']
+        if not y or not m:
+            continue
+        salida.append((f'{y}-{m:02d}', f'{MESES_ES[m]} {y}'))
+    return salida
+
+
+def _codigos_disponibles():
+    """Lista plana de códigos únicos, ordenados."""
+    return list(RegistroMovimiento.objects
+                .exclude(codigo='')
+                .values_list('codigo', flat=True)
+                .distinct()
+                .order_by('codigo'))
+
+
+def _rango_del_mes(mes_str: str) -> tuple[datetime, datetime]:
+    """'2026-11' → (inicio_de_nov_2026, inicio_de_dic_2026)."""
+    y, m = map(int, mes_str.split('-'))
+    desde = datetime(y, m, 1, tzinfo=TZ)
+    # Primer día del mes siguiente
+    if m == 12:
+        hasta = datetime(y + 1, 1, 1, tzinfo=TZ)
+    else:
+        hasta = datetime(y, m + 1, 1, tzinfo=TZ)
+    return desde, hasta
 
 
 @login_required
 def dashboard(request):
-    expandir = request.GET.get('expandir') == '1'
-    desde, hasta = _rango_meses(expandir)
+    # ---------- Filtros ----------
+    mes = request.GET.get('mes', '').strip()
+    codigo = request.GET.get('codigo', '').strip()
 
-    prod_rows, prod_sum = _consultar(SECTOR_PROD, desde, hasta)
-    g3_rows, g3_sum = _consultar(SECTOR_G3, desde, hasta)
+    meses = _meses_disponibles()
+    codigos = _codigos_disponibles()
+
+    # Default: mes más reciente con datos (o el actual si no hay datos)
+    if not mes:
+        mes = meses[0][0] if meses else timezone.now().astimezone(TZ).strftime('%Y-%m')
+
+    desde, hasta = _rango_del_mes(mes)
+
+    # ---------- Querys ----------
+    base = RegistroMovimiento.objects.filter(
+        creado_en_origen__gte=desde,
+        creado_en_origen__lt=hasta,
+    )
+    if codigo:
+        base = base.filter(codigo=codigo)
+
+    # Producción: sector_salida (col E)
+    prod_qs = base.filter(sector_salida=SECTOR_PROD).order_by('-creado_en_origen')
+    prod_rows = list(prod_qs)
+    prod_sum = prod_qs.aggregate(s=Sum('cantidad_total'))['s'] or 0
+
+    # G1 / G3: sector_entrada (col F)
+    g1g3_qs = base.filter(sector_entrada__in=SECTORES_G1G3).order_by('-creado_en_origen')
+    g1g3_rows = list(g1g3_qs)
+    g1g3_sum = g1g3_qs.aggregate(s=Sum('cantidad_total'))['s'] or 0
+
+    diferencia = prod_sum - g1g3_sum
 
     ctx = {
-        'expandir': expandir,
-        'desde': desde,
-        'hasta': hasta,
+        'meses': meses,
+        'codigos': codigos,
+        'mes_sel': mes,
+        'codigo_sel': codigo,
         'prod_rows': prod_rows,
         'prod_sum': prod_sum,
-        'g3_rows': g3_rows,
-        'g3_sum': g3_sum,
+        'g1g3_rows': g1g3_rows,
+        'g1g3_sum': g1g3_sum,
+        'diferencia': diferencia,
     }
     return render(request, 'registros/dashboard.html', ctx)
